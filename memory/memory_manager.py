@@ -3,10 +3,12 @@ import time
 from typing import Dict, Any, List
 from sqlalchemy import create_engine, text
 from config.settings import settings
+from sqlalchemy.orm import sessionmaker
 
 class MemoryManager:
     def __init__(self):
         self.engine = create_engine(settings.POSTGRES_URL)
+        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
         
     def store_experience(self, user_id: str, experience: Dict[str, Any], 
                         emotional_context: Dict[str, Any] = None, 
@@ -119,11 +121,179 @@ class MemoryManager:
             print(f"❌ Failed to log event: {e}")
             return False
 
+    # ===== ENHANCED MEMORY FEATURES (PROPERLY INDENTED INSIDE CLASS) =====
+    
+    def store_enhanced_experience(self, user_id: str, experience: Dict[str, Any], 
+                               emotional_context: Dict[str, Any] = None, 
+                               importance: float = 0.5) -> bool:
+        """Enhanced experience storage with emotional intelligence"""
+        try:
+            # Create enhanced experience data
+            enhanced_experience = experience.copy()
+            
+            # Add emotional intelligence
+            if emotional_context:
+                enhanced_experience['emotional_context'] = emotional_context
+                enhanced_experience['emotional_intensity'] = self._calculate_emotional_intensity(emotional_context)
+                enhanced_experience['memory_tags'] = self._generate_memory_tags(experience, emotional_context)
+            
+            # Calculate enhanced importance
+            enhanced_importance = self._calculate_enhanced_importance(experience, emotional_context, importance)
+            
+            # Use existing store_experience method (keeps it working!)
+            result = self.store_experience(user_id, enhanced_experience, emotional_context, enhanced_importance)
+            
+            if result:
+                print(f"💾✨ Enhanced experience stored for {user_id}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"⚠️ Enhanced storage failed, using basic storage: {e}")
+            # Fallback to original method if enhanced fails
+            return self.store_experience(user_id, experience, emotional_context, importance)
+
+    def _calculate_emotional_intensity(self, emotional_context: Dict[str, Any]) -> float:
+        """Calculate emotional intensity from context"""
+        if not emotional_context:
+            return 0.0
+        
+        intensity_indicators = {
+            'stress': 0.8, 'stressed': 0.8,
+            'excited': 0.7, 'happy': 0.6,
+            'angry': 0.9, 'frustrated': 0.7,
+            'sad': 0.6, 'worried': 0.7,
+            'seeking_help': 0.5, 'positive': 0.4,
+            'negative': 0.6, 'confused': 0.4, 'calm': 0.2
+        }
+        
+        max_intensity = 0.0
+        for emotion, value in emotional_context.items():
+            emotion_key = emotion.lower()
+            if emotion_key in intensity_indicators:
+                if isinstance(value, (int, float)):
+                    max_intensity = max(max_intensity, value * intensity_indicators[emotion_key])
+                else:
+                    max_intensity = max(max_intensity, intensity_indicators[emotion_key])
+        
+        return min(max_intensity, 1.0)
+
+    def _generate_memory_tags(self, experience: Dict[str, Any], emotional_context: Dict[str, Any] = None) -> List[str]:
+        """Generate semantic tags for better memory indexing"""
+        tags = []
+        
+        # Content-based tags
+        if 'type' in experience:
+            tags.append(f"type:{experience['type']}")
+        
+        # Extract keywords from message content
+        if 'message' in experience:
+            message = experience['message'].lower()
+            keywords = ['work', 'stress', 'help', 'time', 'family', 'health', 'money', 'learning', 'happy', 'sad']
+            for keyword in keywords:
+                if keyword in message:
+                    tags.append(f"topic:{keyword}")
+        
+        # Emotional tags
+        if emotional_context:
+            for emotion in emotional_context.keys():
+                tags.append(f"emotion:{emotion.lower()}")
+        
+        # Temporal tags  
+        hour = int(time.time() % 86400 // 3600)  # Hours since midnight
+        if 6 <= hour < 12:
+            tags.append("time:morning")
+        elif 12 <= hour < 18:
+            tags.append("time:afternoon")
+        else:
+            tags.append("time:evening")
+        
+        return tags
+
+    def _calculate_enhanced_importance(self, experience: Dict[str, Any], 
+                                     emotional_context: Dict[str, Any] = None, 
+                                     base_importance: float = 0.5) -> float:
+        """Calculate enhanced importance score"""
+        importance = base_importance
+        
+        # Boost importance for emotional content
+        if emotional_context:
+            emotional_intensity = self._calculate_emotional_intensity(emotional_context)
+            importance += emotional_intensity * 0.3
+        
+        # Boost importance for longer messages
+        if 'message' in experience and len(str(experience['message'])) > 100:
+            importance += 0.1
+        
+        # Boost importance for help requests
+        if 'message' in experience:
+            message = str(experience['message']).lower()
+            if any(word in message for word in ['help', 'stressed', 'urgent', 'important']):
+                importance += 0.2
+        
+        return min(importance, 1.0)
+
+    def get_enhanced_memory_stats(self, user_id: str) -> Dict[str, Any]:
+        """Get comprehensive memory statistics with enhancements"""
+        try:
+            # Get experiences using existing method
+            experiences = self.retrieve_experiences(user_id, 50)
+            
+            if not experiences:
+                return {"total_experiences": 0, "status": "no_data"}
+            
+            # Calculate enhanced metrics
+            total_exp = len(experiences)
+            importance_scores = []
+            emotional_intensities = []
+            
+            for exp in experiences:
+                exp_data = exp.get('experience', {})
+                importance_scores.append(exp.get('importance', 0.5))
+                emotional_intensities.append(exp_data.get('emotional_intensity', 0.0))
+            
+            avg_importance = sum(importance_scores) / len(importance_scores) if importance_scores else 0.5
+            avg_emotional_intensity = sum(emotional_intensities) / len(emotional_intensities) if emotional_intensities else 0.0
+            
+            return {
+                "total_experiences": total_exp,
+                "average_importance": round(avg_importance, 2),
+                "average_emotional_intensity": round(avg_emotional_intensity, 2),
+                "recent_experiences": min(total_exp, 20),
+                "memory_health": "excellent" if total_exp > 50 else "good" if total_exp > 10 else "developing",
+                "enhanced_features": "active"
+            }
+            
+        except Exception as e:
+            print(f"❌ Enhanced stats failed: {e}")
+            return {"total_experiences": len(self.retrieve_experiences(user_id, 10)), "status": "basic"}
+
+
 # Test it
 if __name__ == "__main__":
+    print("🧪 Testing Enhanced Memory Manager...")
+    
     memory = MemoryManager()
     
-    # Simple test
-    memory.store_experience("test_user", {"message": "hello"}, {"mood": "happy"})
+    # Test basic functionality
+    basic_success = memory.store_experience("test_user", {"message": "hello"}, {"mood": "happy"})
+    print(f"✅ Basic storage: {basic_success}")
+    
+    # Test enhanced functionality
+    enhanced_success = memory.store_enhanced_experience(
+        "test_user",
+        {"type": "chat", "message": "I'm feeling stressed about work again"},
+        {"stress": 0.8, "anxiety": 0.6},
+        0.7
+    )
+    print(f"✅ Enhanced storage: {enhanced_success}")
+    
+    # Test retrieval
     experiences = memory.retrieve_experiences("test_user")
-    print(f"✅ Memory manager working: {len(experiences)} experiences")
+    print(f"✅ Retrieved: {len(experiences)} experiences")
+    
+    # Test enhanced stats
+    stats = memory.get_enhanced_memory_stats("test_user")
+    print(f"✅ Enhanced stats: {stats}")
+    
+    print("🎉 Enhanced memory manager test complete!")

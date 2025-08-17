@@ -13,3 +13,5 @@ pandas>=2.0.0
 requests>=2.31.0
 aioredis>=2.0.0
 asyncio-mqtt>=0.13.0
+psutil
+

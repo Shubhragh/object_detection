@@ -1,58 +1,105 @@
-from abc import ABC, abstractmethod
-from typing import Dict, Any, List
-import json
-import time
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from letta_manager import LettaManager
+"""
+Base Agent Class for AI Life Operating System
+Foundation for all specialized agents
+"""
 
-class BaseAgent(ABC):
-    def __init__(self, name: str, system_prompt: str):
+from typing import Dict, Any, List, Optional
+from hybrid_agent_manager import HybridAgentManager
+import time
+
+class BaseSpecializedAgent:
+    """Base class for all specialized agents"""
+    
+    def __init__(self, name: str, specialization: str, capabilities: List[str], 
+                 use_gemini: bool = True, hybrid_manager: HybridAgentManager = None):
         self.name = name
-        self.system_prompt = system_prompt
-        self.letta = LettaManager()
+        self.specialization = specialization
+        self.capabilities = capabilities
+        self.use_gemini = use_gemini
+        self.hybrid_manager = hybrid_manager or HybridAgentManager()
+        
+        # Agent state
         self.agent_id = None
-        self.memory_state = {}
+        self.initialized = False
+        self.completed_tasks = 0
+        self.success_rate = 1.0
+        self.expertise_level = 0.5
         
+        # Performance metrics
+        self.performance_metrics = {
+            "total_interactions": 0,
+            "successful_responses": 0,
+            "average_response_time": 0.0
+        }
+    
     def initialize(self) -> bool:
-        """Initialize the agent in Letta"""
-        agent_data = self.letta.create_agent(
-            name=self.name,
-            system_prompt=self.system_prompt,
-            tools=self.get_tools()
-        )
+        """Initialize the specialized agent"""
+        system_prompt = self._generate_specialized_prompt()
+        agent_data = self.hybrid_manager.create_agent(self.name, system_prompt, self.use_gemini)
         
-        if agent_data:
-            self.agent_id = agent_data.get('id')
-            print(f"✅ {self.name} initialized with ID: {self.agent_id}")
+        if agent_data and 'id' in agent_data:
+            self.agent_id = agent_data['id']
+            self.initialized = True
+            print(f"✅ {self.name} ({self.specialization}) initialized")
             return True
         return False
     
-    @abstractmethod
-    def get_tools(self) -> List[str]:
-        """Return list of tools this agent needs"""
-        pass
-    
-    def process_message(self, message: str) -> Dict[str, Any]:
-        """Process a message through the agent"""
-        if not self.agent_id:
-            return {"error": "Agent not initialized"}
+    def _generate_specialized_prompt(self) -> str:
+        """Generate specialized system prompt - override in subclasses"""
+        return f"""You are {self.name}, specialized in {self.specialization}.
         
-        response = self.letta.send_message(self.agent_id, message)
-        self.update_memory_state()
-        return response
+Capabilities: {', '.join(self.capabilities)}
+        
+Provide expert assistance in your domain while collaborating effectively with other agents."""
     
-    def update_memory_state(self):
-        """Update local memory state from Letta"""
-        if self.agent_id:
-            self.memory_state = self.letta.get_agent_memory(self.agent_id)
+    def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a task through this agent"""
+        if not self.initialized:
+            return {"error": "Agent not initialized", "agent": self.name}
+        
+        start_time = time.time()
+        
+        try:
+            response = self.hybrid_manager.send_message(
+                self.agent_id, 
+                task.get("message", ""), 
+                use_gemini=self.use_gemini
+            )
+            
+            response_time = time.time() - start_time
+            self._update_metrics(True, response_time)
+            
+            return {
+                "agent": self.name,
+                "specialization": self.specialization,
+                "response": response.get("response", "No response"),
+                "response_time": response_time,
+                "success": True
+            }
+            
+        except Exception as e:
+            self._update_metrics(False, 0)
+            return {"agent": self.name, "error": str(e), "success": False}
+    
+    def _update_metrics(self, success: bool, response_time: float):
+        """Update agent performance metrics"""
+        self.performance_metrics["total_interactions"] += 1
+        if success:
+            self.performance_metrics["successful_responses"] += 1
+        
+        # Update success rate
+        self.success_rate = (
+            self.performance_metrics["successful_responses"] / 
+            self.performance_metrics["total_interactions"]
+        )
     
     def get_status(self) -> Dict[str, Any]:
-        """Get agent status and memory"""
+        """Get agent status"""
         return {
             "name": self.name,
-            "agent_id": self.agent_id,
-            "memory_state": self.memory_state,
-            "initialized": bool(self.agent_id)
+            "specialization": self.specialization,
+            "initialized": self.initialized,
+            "success_rate": self.success_rate,
+            "expertise_level": self.expertise_level,
+            "total_interactions": self.performance_metrics["total_interactions"]
         }

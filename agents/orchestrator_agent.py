@@ -1,7 +1,6 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from hybrid_agent_manager import HybridAgentManager
 from typing import List, Dict, Any
 import time
@@ -16,11 +15,34 @@ class OrchestratorAgent:
 - Maintain awareness of all active workflows and pending tasks
 - Never wait passively - always have a plan for moving forward
 
+When routing messages, analyze user intent and select the BEST SPECIALIZED AGENT:
+
+AVAILABLE AGENTS:
+1. **ContextAgent**: Environmental context analysis, emotional state recognition, situational awareness
+   - Use for: Emotional analysis, situation assessment, context interpretation, mood detection
+   - Keywords: "feeling", "situation", "context", "environment", "mood", "state"
+
+2. **CommunicationAgent**: Message crafting, relationship management, social intelligence
+   - Use for: Relationship advice, communication help, social interactions, message writing
+   - Keywords: "relationship", "talk", "communicate", "message", "social", "conversation"
+
+3. **ProductivityAgent**: Time management, task organization, workflow efficiency
+   - Use for: Time management, deadlines, task planning, organization, efficiency
+   - Keywords: "time", "deadline", "organize", "productivity", "schedule", "manage", "task"
+
+4. **StressManagementAgent**: Stress detection, coping strategies, emotional wellness
+   - Use for: Stress relief, anxiety help, coping strategies, emotional support, overwhelm
+   - Keywords: "stress", "overwhelmed", "anxiety", "pressure", "cope", "calm", "relax"
+
+ROUTING DECISION FORMAT:
+**Best Agent:** [agent_name]
+**Explanation:** [Brief reason why this agent is most suitable]
+
 When a user doesn't respond to a query within 2-5 minutes, initiate proactive escalation by consulting other agents for context.
 
 Key Behaviors:
 1. PROACTIVE: Always think ahead and prepare next steps
-2. ROUTING: Direct tasks to appropriate specialized agents
+2. ROUTING: Direct tasks to the most appropriate specialized agent based on content and intent
 3. MONITORING: Track pending queries and detect timeouts
 4. ESCALATING: Take action when users don't respond
 5. COORDINATING: Maintain system-wide workflow awareness
@@ -37,12 +59,13 @@ Remember: You are the brain of a living AI system that never sleeps and always h
         # Orchestrator-specific data
         self.pending_queries = {}
         self.active_workflows = {}
-        self.agent_network = {}
+        self.agent_registry = {}  # Will store available agents
         self.escalation_policies = {}
         self.system_state = {
             "active_conversations": 0,
             "total_queries_processed": 0,
             "successful_escalations": 0,
+            "successful_routes": 0,
             "current_load": "low"
         }
     
@@ -60,6 +83,11 @@ Remember: You are the brain of a living AI system that never sleeps and always h
             print(f"✅ {self.name} initialized successfully with {'Gemini' if self.use_gemini else 'Groq'}")
             return True
         return False
+    
+    def register_agent(self, agent_name: str, agent_data: Dict[str, Any]):
+        """Register an agent with the orchestrator for routing"""
+        self.agent_registry[agent_name.lower()] = agent_data
+        print(f"📋 Registered agent: {agent_name}")
     
     def _initialize_escalation_policies(self):
         """Set up default escalation policies"""
@@ -90,6 +118,106 @@ Remember: You are the brain of a living AI system that never sleeps and always h
         response = self.hybrid_manager.send_message(self.agent_id, message)
         return response
     
+    def route_message(self, message: str, target_agent: str = None) -> Dict[str, Any]:
+        """Enhanced routing with specialized agent selection"""
+        
+        # Update system metrics
+        self.system_state["total_queries_processed"] += 1
+        
+        # Direct routing if target agent specified
+        if target_agent and target_agent.lower() in self.agent_registry:
+            agent_data = self.agent_registry[target_agent.lower()]
+            response = self.hybrid_manager.send_message(agent_data['id'], message)
+            self.system_state["successful_routes"] += 1
+            return response
+        
+        # Smart routing - ask orchestrator to decide
+        routing_message = f"""
+ROUTING REQUEST:
+User message: "{message}"
+
+Available specialized agents in our system:
+- ContextAgent: Environmental context analysis, emotional state recognition, situational awareness
+- CommunicationAgent: Message crafting, relationship management, social intelligence  
+- ProductivityAgent: Time management, task organization, workflow efficiency
+- StressManagementAgent: Stress detection, coping strategies, emotional wellness
+
+Based on the user's message content and intent, which agent should handle this request?
+
+Respond with:
+**Best Agent:** [exact agent name]
+**Explanation:** [brief reason]
+"""
+        
+        routing_response = self.process_message(routing_message)
+        
+        # Extract agent name from response
+        response_text = routing_response.get('response', '')
+        selected_agent = self._extract_agent_from_response(response_text)
+        
+        if selected_agent and selected_agent.lower() in self.agent_registry:
+            # Route to selected agent
+            agent_data = self.agent_registry[selected_agent.lower()]
+            final_response = self.hybrid_manager.send_message(agent_data['id'], message)
+            self.system_state["successful_routes"] += 1
+            
+            # Return routing decision + agent response
+            return {
+                "response": response_text,  # Include routing explanation
+                "routed_to": selected_agent,
+                "agent_response": final_response.get('response', ''),
+                "routing_success": True
+            }
+        else:
+            # Fallback - return orchestrator's routing analysis
+            return {
+                "response": response_text,
+                "routed_to": "orchestrator",
+                "routing_success": False,
+                "note": "Could not identify suitable agent, provided analysis instead"
+            }
+    
+    def _extract_agent_from_response(self, response_text: str) -> str:
+        """Extract agent name from orchestrator's routing response"""
+        import re
+        
+        # Look for patterns like "**Best Agent:** AgentName"
+        patterns = [
+            r'\*\*Best Agent:\*\*\s*`?([A-Za-z]+Agent)`?',
+            r'\*\*Best Agent:\*\*\s*([A-Za-z]+Agent)',
+            r'Best Agent:\s*`?([A-Za-z]+Agent)`?',
+            r'Route to:\s*`?([A-Za-z]+Agent)`?'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, response_text, re.IGNORECASE)
+            if match:
+                agent_name = match.group(1)
+                # Standardize agent names
+                if 'context' in agent_name.lower():
+                    return 'ContextAgent'
+                elif 'communication' in agent_name.lower():
+                    return 'CommunicationAgent'
+                elif 'productivity' in agent_name.lower():
+                    return 'ProductivityAgent'
+                elif 'stress' in agent_name.lower():
+                    return 'StressManagementAgent'
+                else:
+                    return agent_name
+        
+        # Fallback - analyze content for keywords
+        message_lower = response_text.lower()
+        if any(word in message_lower for word in ['stress', 'anxiety', 'overwhelm', 'pressure']):
+            return 'StressManagementAgent'
+        elif any(word in message_lower for word in ['time', 'deadline', 'productivity', 'organize']):
+            return 'ProductivityAgent'
+        elif any(word in message_lower for word in ['communication', 'relationship', 'social']):
+            return 'CommunicationAgent'
+        elif any(word in message_lower for word in ['context', 'situation', 'emotion', 'feeling']):
+            return 'ContextAgent'
+        
+        return None
+    
     def track_query(self, query_id: str, query_text: str, user_id: str = "default_user", 
                    priority: str = "standard", timestamp: float = None):
         """Track a pending query for timeout detection"""
@@ -106,9 +234,7 @@ Remember: You are the brain of a living AI system that never sleeps and always h
             "context": {}
         }
         
-        self.system_state["total_queries_processed"] += 1
         self.system_state["active_conversations"] += 1
-        
         print(f"📝 Tracking query: {query_id} (Priority: {priority})")
         return True
     
@@ -156,19 +282,19 @@ Remember: You are the brain of a living AI system that never sleeps and always h
         elapsed_time = time.time() - query_data["timestamp"]
         
         escalation_message = f"""
-TIMEOUT ESCALATION:
+TIMEOUT ESCALATION ANALYSIS:
 - Query: "{query_data['text']}"
 - User: {query_data['user_id']}
 - Elapsed: {elapsed_time/60:.1f} minutes
 - Priority: {query_data['priority']}
 
 REQUIRED ACTIONS:
-1. Analyze why user hasn't responded
-2. Check user context/activity if available
-3. Suggest appropriate proactive response
-4. Recommend next steps
+1. Analyze why user hasn't responded (busy, away, distracted, unclear response needed)
+2. Suggest appropriate proactive follow-up strategy
+3. Recommend which specialized agent could provide additional context
+4. Provide specific next steps for re-engagement
 
-Provide escalation strategy now.
+Generate proactive escalation strategy now.
 """
         
         response = self.process_message(escalation_message)
@@ -197,11 +323,26 @@ Provide escalation strategy now.
         # Update system state
         self.system_state["last_periodic_check"] = time.time()
         
+        # Calculate system health
+        total_queries = self.system_state["total_queries_processed"]
+        success_rate = (self.system_state["successful_routes"] / max(1, total_queries)) * 100
+        
+        if success_rate > 90:
+            health = "excellent"
+        elif success_rate > 80:
+            health = "healthy"
+        elif len(timed_out) < 3:
+            health = "healthy" 
+        else:
+            health = "needs_attention"
+        
         return {
             "check_timestamp": time.time(),
             "timeouts_found": len(timed_out),
             "escalations": len(escalation_results),
-            "system_health": "healthy" if len(timed_out) < 5 else "needs_attention"
+            "system_health": health,
+            "success_rate": f"{success_rate:.1f}%",
+            "registered_agents": len(self.agent_registry)
         }
     
     def get_system_status(self) -> Dict[str, Any]:
@@ -215,17 +356,52 @@ Provide escalation strategy now.
             },
             "system_metrics": self.system_state,
             "active_queries": len(self.pending_queries),
-            "active_workflows": len(self.active_workflows)
+            "active_workflows": len(self.active_workflows),
+            "registered_agents": list(self.agent_registry.keys()),
+            "routing_success_rate": (
+                self.system_state["successful_routes"] / 
+                max(1, self.system_state["total_queries_processed"])
+            ) * 100
+        }
+    
+    def get_routing_analytics(self) -> Dict[str, Any]:
+        """Get routing performance analytics"""
+        total_queries = self.system_state["total_queries_processed"]
+        successful_routes = self.system_state["successful_routes"]
+        
+        return {
+            "total_routing_requests": total_queries,
+            "successful_routes": successful_routes,
+            "routing_success_rate": f"{(successful_routes/max(1, total_queries))*100:.1f}%",
+            "available_agents": list(self.agent_registry.keys()),
+            "system_health": "optimal" if successful_routes/max(1, total_queries) > 0.9 else "good"
         }
 
-# Test the updated orchestrator
+# Test the enhanced orchestrator
 if __name__ == "__main__":
-    print("🧪 Testing Hybrid Orchestrator Agent...")
+    print("🧪 Testing Enhanced Hybrid Orchestrator Agent...")
     
     orchestrator = OrchestratorAgent(use_gemini=True)
     
     if orchestrator.initialize():
-        print("✅ Orchestrator initialized")
+        print("✅ Enhanced Orchestrator initialized")
+        
+        # Test agent registration (simulate agent network setup)
+        orchestrator.register_agent("ContextAgent", {"id": "test_context_001"})
+        orchestrator.register_agent("StressManagementAgent", {"id": "test_stress_001"})
+        
+        # Test routing
+        test_messages = [
+            "I'm feeling stressed about work deadlines",
+            "How can I better organize my daily tasks?",
+            "I need help with a difficult conversation with my boss"
+        ]
+        
+        for msg in test_messages:
+            print(f"\n💬 Testing route: '{msg[:40]}...'")
+            result = orchestrator.route_message(msg)
+            print(f"✅ Routed to: {result.get('routed_to', 'unknown')}")
+            print(f"Reasoning: {result.get('response', 'No response')[:100]}...")
         
         # Test query tracking and escalation
         orchestrator.track_query("test_1", "What is your name?", "test_user")
@@ -235,14 +411,22 @@ if __name__ == "__main__":
         timeouts = orchestrator.check_timeouts(0)  # Immediate timeout
         
         if timeouts:
-            print(f"✅ Found {len(timeouts)} timeouts")
+            print(f"\n✅ Found {len(timeouts)} timeouts")
             escalation = orchestrator.initiate_escalation(timeouts[0]["id"])
             print(f"Escalation response: {escalation.get('escalation_response', 'No response')[:100]}...")
         
         # Test periodic check
         periodic_result = orchestrator.process_periodic_check()
-        print(f"✅ Periodic check: {periodic_result['system_health']}")
+        print(f"\n✅ Periodic check: {periodic_result['system_health']} ({periodic_result.get('success_rate', 'N/A')})")
         
-        print("🎉 Orchestrator test complete!")
+        # Test system status
+        status = orchestrator.get_system_status()
+        print(f"✅ System status: {len(status['registered_agents'])} agents registered")
+        
+        # Test routing analytics
+        analytics = orchestrator.get_routing_analytics()
+        print(f"✅ Routing analytics: {analytics['routing_success_rate']} success rate")
+        
+        print("\n🎉 Enhanced Orchestrator test complete!")
     else:
         print("❌ Orchestrator initialization failed")
