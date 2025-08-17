@@ -5,6 +5,7 @@ Specialized in understanding user intent and message classification
 
 from hybrid_agent_manager import HybridAgentManager
 from typing import Dict, Any
+from agents.base_agent import BaseAgent
 
 class IntentClassificationAgent:
     """Agent specialized in intent classification and message analysis"""

@@ -5,6 +5,7 @@ Specialized in detecting and analyzing emotional context from user messages
 
 from hybrid_agent_manager import HybridAgentManager
 from typing import Dict, Any
+from agents.base_agent import BaseAgent
 
 class EmotionalAnalysisAgent:
     """Agent specialized in emotional context analysis"""

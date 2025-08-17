@@ -3,7 +3,7 @@ Productivity Agent for AI Life Operating System
 Specialized in productivity enhancement and time management
 """
 
-from agents.base_agent import BaseSpecializedAgent
+from agents.base_agent import BaseAgent
 from hybrid_agent_manager import HybridAgentManager
 import sys
 import os
@@ -13,8 +13,9 @@ from hybrid_agent_manager import HybridAgentManager
 from typing import List, Dict, Any
 import time
 import json
+from agents.base_agent import BaseAgent
 
-class ProductivityAgent(BaseSpecializedAgent):
+class ProductivityAgent(BaseAgent):
     """Agent specialized in productivity and time management"""
     
     def __init__(self, hybrid_manager: HybridAgentManager = None):

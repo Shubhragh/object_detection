@@ -1,105 +1,83 @@
 """
-Base Agent Class for AI Life Operating System
-Foundation for all specialized agents
+Base Agent class for all specialized agents
 """
 
-from typing import Dict, Any, List, Optional
-from hybrid_agent_manager import HybridAgentManager
-import time
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-class BaseSpecializedAgent:
-    """Base class for all specialized agents"""
-    
-    def __init__(self, name: str, specialization: str, capabilities: List[str], 
-                 use_gemini: bool = True, hybrid_manager: HybridAgentManager = None):
-        self.name = name
-        self.specialization = specialization
-        self.capabilities = capabilities
-        self.use_gemini = use_gemini
+from hybrid_agent_manager import HybridAgentManager
+from memory.memory_manager import MemoryManager
+from typing import Dict, Any
+
+class BaseAgent:
+    def __init__(self, hybrid_manager: HybridAgentManager = None):
         self.hybrid_manager = hybrid_manager or HybridAgentManager()
-        
-        # Agent state
+        self.memory_manager = MemoryManager()  # Direct memory access
+        self.name = "BaseAgent"
         self.agent_id = None
-        self.initialized = False
-        self.completed_tasks = 0
-        self.success_rate = 1.0
-        self.expertise_level = 0.5
-        
-        # Performance metrics
-        self.performance_metrics = {
-            "total_interactions": 0,
-            "successful_responses": 0,
-            "average_response_time": 0.0
-        }
-    
+        self.system_prompt = "Base agent prompt"
+
     def initialize(self) -> bool:
-        """Initialize the specialized agent"""
-        system_prompt = self._generate_specialized_prompt()
-        agent_data = self.hybrid_manager.create_agent(self.name, system_prompt, self.use_gemini)
-        
-        if agent_data and 'id' in agent_data:
-            self.agent_id = agent_data['id']
-            self.initialized = True
-            print(f"✅ {self.name} ({self.specialization}) initialized")
-            return True
-        return False
-    
-    def _generate_specialized_prompt(self) -> str:
-        """Generate specialized system prompt - override in subclasses"""
-        return f"""You are {self.name}, specialized in {self.specialization}.
-        
-Capabilities: {', '.join(self.capabilities)}
-        
-Provide expert assistance in your domain while collaborating effectively with other agents."""
-    
-    def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a task through this agent"""
-        if not self.initialized:
-            return {"error": "Agent not initialized", "agent": self.name}
-        
-        start_time = time.time()
-        
-        try:
-            response = self.hybrid_manager.send_message(
-                self.agent_id, 
-                task.get("message", ""), 
-                use_gemini=self.use_gemini
-            )
-            
-            response_time = time.time() - start_time
-            self._update_metrics(True, response_time)
-            
-            return {
-                "agent": self.name,
-                "specialization": self.specialization,
-                "response": response.get("response", "No response"),
-                "response_time": response_time,
-                "success": True
-            }
-            
-        except Exception as e:
-            self._update_metrics(False, 0)
-            return {"agent": self.name, "error": str(e), "success": False}
-    
-    def _update_metrics(self, success: bool, response_time: float):
-        """Update agent performance metrics"""
-        self.performance_metrics["total_interactions"] += 1
-        if success:
-            self.performance_metrics["successful_responses"] += 1
-        
-        # Update success rate
-        self.success_rate = (
-            self.performance_metrics["successful_responses"] / 
-            self.performance_metrics["total_interactions"]
+        """Initialize the agent"""
+        agent_data = self.hybrid_manager.create_agent(
+            self.name,
+            self.system_prompt,
+            use_gemini=True
         )
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Get agent status"""
-        return {
-            "name": self.name,
-            "specialization": self.specialization,
-            "initialized": self.initialized,
-            "success_rate": self.success_rate,
-            "expertise_level": self.expertise_level,
-            "total_interactions": self.performance_metrics["total_interactions"]
-        }
+
+        if agent_data and agent_data.get('id'):
+            self.agent_id = agent_data['id']
+            print(f"✅ {self.name} initialized: {self.agent_id}")
+            return True
+        
+        print(f"❌ {self.name} initialization failed")
+        return False
+
+    def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Process task with memory context"""
+        try:
+            message = task.get('message', '')
+            
+            # Get user's memory context
+            user_memories = self.memory_manager.retrieve_experiences("user", 5)
+            memory_context = self._format_memory_context(user_memories)
+            
+            # Build context-aware prompt
+            context_prompt = f"""
+RECENT USER CONTEXT:
+{memory_context}
+
+CURRENT USER MESSAGE: "{message}"
+
+Respond based on the user's history and current message. Be contextually aware.
+"""
+
+            response = self.hybrid_manager.send_message(self.agent_id, context_prompt)
+            
+            if response.get('success'):
+                return {
+                    "success": True,
+                    "response": response.get('response', ''),
+                    "memory_used": len(user_memories)
+                }
+            else:
+                return {"success": False, "error": response.get('error', 'Unknown error')}
+
+        except Exception as e:
+            print(f"❌ {self.name} task processing failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _format_memory_context(self, memories: list) -> str:
+        """Format user memories for context"""
+        if not memories:
+            return "No previous interactions stored."
+        
+        context_lines = []
+        for i, memory in enumerate(memories[:3]):  # Last 3 interactions
+            exp_data = memory.get('experience', {})
+            message = exp_data.get('message', 'N/A')
+            timestamp = memory.get('timestamp', 'Unknown time')
+            context_lines.append(f"{i+1}. {timestamp}: {message[:80]}...")
+        
+        return "\n".join(context_lines)

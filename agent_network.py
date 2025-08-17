@@ -1,289 +1,220 @@
-from hybrid_agent_manager import HybridAgentManager
+"""
+AI Life Agent Network - Centralized agent coordination and management
+"""
+
 from agents.orchestrator_agent import OrchestratorAgent
-from typing import Dict, Any, List
+from typing import Dict, Any , List
 import time
 
-
 class AILifeAgentNetwork:
+    """Centralized coordination of all AI agents in the system"""
+    
     def __init__(self):
-        self.hybrid_manager = HybridAgentManager()
-        self.agents = {}
+        """Initialize the agent network"""
         self.orchestrator = None
-    
-    def initialize_network(self):
-        """Initialize all agents in the network"""
-        print("🚀 Initializing AI Life Agent Network...")
+        self.agents = {}
+        self.network_initialized = False
+        self.initialization_time = None
         
-        # 1. Initialize Orchestrator
-        self.orchestrator = OrchestratorAgent(use_gemini=True)
-        if self.orchestrator.initialize():
-            self.agents["orchestrator"] = self.orchestrator
-            print("✅ Orchestrator ready")
-        else:
-            print("❌ Failed to initialize Orchestrator")
-            return False
-        
-        # 2. Create specialized agents
-        agent_configs = [
-            # Your existing agents
-            {
-                "name": "ContextAgent", 
-                "role": "Environmental context analysis and activity recognition",
-                "use_gemini": True
-            },
-            {
-                "name": "CommunicationAgent",
-                "role": "Message crafting, relationship management, and social intelligence",
-                "use_gemini": False
-            },
-            # NEW SPECIALIZED AGENTS
-            {
-                "name": "StressManagementAgent",
-                "role": "Stress detection, coping strategies, and emotional wellness support with evidence-based techniques",
-                "use_gemini": True
-            },
-            {
-                "name": "ProductivityAgent", 
-                "role": "Time management optimization, task prioritization, and workflow efficiency enhancement",
-                "use_gemini": False
-            }
-        ]
-        
-        # 3. Create all specialized agents
-        for config in agent_configs:
-            agent = self._create_specialized_agent(
-                config["name"],
-                config["role"], 
-                config["use_gemini"]
-            )
-            if agent:
-                self.agents[config["name"].lower()] = agent
-                print(f"✅ {config['name']} ready")
-            else:
-                print(f"❌ Failed to create {config['name']}")
-        
-        # 4. Register agents with orchestrator for smart routing
-        if self.orchestrator and len(self.agents) > 1:
-            registered_count = 0
-            for agent_name, agent_data in self.agents.items():
-                if agent_name != 'orchestrator':  # Don't register orchestrator with itself
-                    try:
-                        self.orchestrator.register_agent(agent_name, agent_data)
-                        registered_count += 1
-                    except Exception as e:
-                        print(f"⚠️ Failed to register {agent_name}: {e}")
+        print("🌐 AI Life Agent Network created")
+
+    def initialize_network(self) -> bool:
+        """Initialize the complete agent network"""
+        try:
+            print("🚀 Initializing AI Life Agent Network...")
             
-            print(f"✅ Registered {registered_count} agents with orchestrator")
-        
-        print(f"🎉 Network initialized with {len(self.agents)} agents")
-        return len(self.agents) > 1
-    
-    def _create_specialized_agent(self, name: str, role: str, use_gemini: bool):
-        """Create a specialized agent with role-specific prompt"""
-        system_prompt = f"""You are {name}, a specialized agent in a proactive multi-agent AI system.
+            # Step 1: Initialize the orchestrator agent
+            self.orchestrator = OrchestratorAgent(use_gemini=True)
+            
+            if not self.orchestrator.initialize():
+                print("❌ Orchestrator initialization failed")
+                return False
+            
+            print("✅ Orchestrator initialized successfully")
+            
+            # Step 2: Get available agents from orchestrator
+            self.agents = self._build_agent_registry()
+            
+            # Step 3: Verify network connectivity
+            if not self._verify_network_health():
+                print("⚠️ Network health check failed, but continuing...")
+            
+            self.network_initialized = True
+            self.initialization_time = time.time()
+            
+            print(f"✅ Agent Network initialized with {len(self.agents)} agents")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Agent Network initialization failed: {e}")
+            return False
 
-Your role: {role}
-
-Core capabilities:
-- Analyze requests within your domain expertise
-- Provide actionable insights and recommendations
-- Collaborate with other agents when needed
-- Maintain proactive rather than reactive behavior
-- Keep responses focused and practical
-
-When you receive a request:
-1. Determine if it's within your expertise
-2. Provide specific, actionable advice
-3. Suggest next steps or additional resources
-4. Alert if other agents should be involved
-
-You are part of a living AI system that never waits passively."""
+    def _build_agent_registry(self) -> Dict[str, Dict[str, Any]]:
+        """Build registry of available agents from orchestrator"""
+        agents_registry = {}
         
         try:
-            agent_data = self.hybrid_manager.create_agent(name, system_prompt, use_gemini)
-            
-            if agent_data and agent_data.get('id'):
-                return {
-                    "id": agent_data['id'],
-                    "name": name,
-                    "role": role,
-                    "use_gemini": use_gemini,
-                    "hybrid_manager": self.hybrid_manager
-                }
-        except Exception as e:
-            print(f"❌ Error creating {name}: {e}")
-        
-        return None
-
-    def route_message(self, message: str, target_agent: str = None) -> Dict[str, Any]:
-        """Route message to appropriate agent"""
-        if target_agent and target_agent.lower() in self.agents:
-            # Direct routing
-            agent = self.agents[target_agent.lower()]
-            try:
-                if hasattr(agent, 'process_message'):
-                    return agent.process_message(message)
-                else:
-                    return self.hybrid_manager.send_message(agent['id'], message)
-            except Exception as e:
-                return {"error": f"Failed to send message to {target_agent}: {e}"}
-        else:
-            # Route through orchestrator for decision
-            if self.orchestrator:
-                routing_message = f"""
-ROUTING REQUEST:
-User message: "{message}"
-Available agents: {list(self.agents.keys())}
-
-Determine the best agent to handle this request and explain why.
-If multiple agents needed, suggest coordination approach.
-"""
-                try:
-                    return self.orchestrator.process_message(routing_message)
-                except Exception as e:
-                    return {"error": f"Orchestrator routing failed: {e}"}
-        
-        return {"error": "No suitable agent found or orchestrator unavailable"}
-    
-    def broadcast_message(self, message: str) -> Dict[str, Any]:
-        """Send message to all agents for collective input"""
-        responses = {}
-        
-        for agent_name, agent in self.agents.items():
-            try:
-                if hasattr(agent, 'process_message'):
-                    response = agent.process_message(message)
-                else:
-                    response = self.hybrid_manager.send_message(agent['id'], message)
-                
-                responses[agent_name] = response.get('response', 'No response')
-            except Exception as e:
-                responses[agent_name] = f"Error: {e}"
-        
-        return responses
-    
-    def get_network_status(self) -> Dict[str, Any]:
-        """Get status of entire agent network"""
-        agent_statuses = {}
-        
-        for agent_name, agent in self.agents.items():
-            try:
-                if hasattr(agent, 'get_system_status'):
-                    agent_statuses[agent_name] = agent.get_system_status()
-                else:
-                    agent_statuses[agent_name] = {
-                        "name": agent.get('name', agent_name),
-                        "id": agent.get('id', 'unknown'),
-                        "role": agent.get('role', 'Unknown role'),
-                        "use_gemini": agent.get('use_gemini', False),
-                        "active": True
+            if self.orchestrator and hasattr(self.orchestrator, 'available_agents'):
+                for agent_name, agent_data in self.orchestrator.available_agents.items():
+                    agents_registry[agent_name.lower()] = {
+                        'id': agent_data.get('id'),
+                        'name': agent_name,
+                        'instance': agent_data.get('instance'),
+                        'active': agent_data.get('active', True),
+                        'registered_time': time.time()
                     }
-            except Exception as e:
-                agent_statuses[agent_name] = {
-                    "name": agent_name,
-                    "active": False,
-                    "error": str(e)
-                }
-        
-        return {
-            "network_size": len(self.agents),
-            "agents": agent_statuses,
-            "orchestrator_active": self.orchestrator is not None,
-            "timestamp": time.time()
-        }
-    
-    def send_direct_message(self, agent_name: str, message: str) -> Dict[str, Any]:
-        """Send message directly to a specific agent"""
-        agent_name = agent_name.lower()
-        
-        if agent_name not in self.agents:
-            return {"error": f"Agent '{agent_name}' not found. Available agents: {list(self.agents.keys())}"}
-        
-        return self.route_message(message, agent_name)
-    
-    def get_agent_capabilities(self) -> Dict[str, str]:
-        """Get a summary of all agent capabilities"""
-        capabilities = {}
-        
-        for agent_name, agent_data in self.agents.items():
-            if isinstance(agent_data, dict) and 'role' in agent_data:
-                capabilities[agent_name] = agent_data['role']
-            elif hasattr(agent_data, 'role'):
-                capabilities[agent_name] = agent_data.role
-            else:
-                capabilities[agent_name] = "General AI assistant"
-        
-        return capabilities
-    
+                    
+            print(f"📋 Built registry with {len(agents_registry)} agents")
+            
+        except Exception as e:
+            print(f"⚠️ Failed to build agent registry: {e}")
+            
+        return agents_registry
+
+    def _verify_network_health(self) -> bool:
+        """Verify all agents are responding"""
+        try:
+            # Test orchestrator
+            if not self.orchestrator or not self.orchestrator.agent_id:
+                return False
+                
+            # Test that we have some agents available
+            if len(self.agents) == 0:
+                print("⚠️ No agents available in network")
+                return False
+                
+            print("✅ Network health check passed")
+            return True
+            
+        except Exception as e:
+            print(f"⚠️ Network health check failed: {e}")
+            return False
+
+    def route_message(self, message: str) -> Dict[str, Any]:
+        """Route message through the network (fallback method)"""
+        if not self.network_initialized or not self.orchestrator:
+            return {
+                "response": "Agent network not initialized. Please restart the system.",
+                "success": False,
+                "error": "Network not initialized"
+            }
+            
+        try:
+            # Use orchestrator for routing
+            routing_result = self.orchestrator.route_message(message)
+            
+            # Convert orchestrator response to expected format
+            return {
+                "response": routing_result.get('agent_response', routing_result.get('response', '')),
+                "success": routing_result.get('routing_success', False),
+                "routed_to": routing_result.get('routed_to', 'unknown'),
+                "reasoning": routing_result.get('reasoning', ''),
+                "response_time": routing_result.get('response_time', 0)
+            }
+            
+        except Exception as e:
+            print(f"❌ Network routing failed: {e}")
+            return {
+                "response": "I apologize, but I encountered an error processing your request.",
+                "success": False,
+                "error": str(e)
+            }
+
+    def get_network_status(self) -> Dict[str, Any]:
+        """Get comprehensive network status"""
+        try:
+            status = {
+                "network_initialized": self.network_initialized,
+                "initialization_time": self.initialization_time,
+                "network_size": len(self.agents),
+                "orchestrator_active": bool(self.orchestrator and self.orchestrator.agent_id),
+                "available_agents": list(self.agents.keys()),
+                "network_health": "healthy" if self.network_initialized else "offline"
+            }
+            
+            # Get orchestrator metrics if available
+            if self.orchestrator:
+                orchestrator_status = self.orchestrator.get_system_status()
+                status.update({
+                    "routing_success_rate": orchestrator_status.get("routing_success_rate", 0),
+                    "total_routes": orchestrator_status.get("system_metrics", {}).get("total_routes", 0)
+                })
+            
+            return status
+            
+        except Exception as e:
+            return {
+                "network_initialized": False,
+                "error": str(e),
+                "network_health": "error"
+            }
+
+    def get_agent_by_name(self, agent_name: str) -> Dict[str, Any]:
+        """Get specific agent information"""
+        agent_key = agent_name.lower()
+        return self.agents.get(agent_key, {})
+
+    def is_agent_available(self, agent_name: str) -> bool:
+        """Check if specific agent is available"""
+        agent_data = self.get_agent_by_name(agent_name)
+        return agent_data.get('active', False)
+
+    def get_agent_list(self) -> List[str]:
+        """Get list of available agent names"""
+        return [agent_data.get('name', '') for agent_data in self.agents.values()]
+
     def shutdown_network(self):
-        """Gracefully shutdown all agents"""
-        print("🔄 Shutting down AI Life Agent Network...")
-        
-        shutdown_count = 0
-        for agent_name, agent in self.agents.items():
-            try:
-                if hasattr(agent, 'shutdown'):
-                    agent.shutdown()
-                elif isinstance(agent, dict) and 'id' in agent:
-                    # Attempt to cleanup via hybrid manager
-                    self.hybrid_manager.cleanup_agent(agent['id'])
-                shutdown_count += 1
-                print(f"✅ {agent_name} shut down")
-            except Exception as e:
-                print(f"⚠️ Error shutting down {agent_name}: {e}")
-        
-        self.agents.clear()
-        self.orchestrator = None
-        print(f"🏁 Network shutdown complete. {shutdown_count} agents stopped.")
+        """Gracefully shutdown the agent network"""
+        try:
+            print("🛑 Shutting down Agent Network...")
+            
+            # Clear agents
+            self.agents.clear()
+            
+            # Note: We don't shutdown orchestrator as it might be used elsewhere
+            self.orchestrator = None
+            
+            self.network_initialized = False
+            print("✅ Agent Network shutdown complete")
+            
+        except Exception as e:
+            print(f"⚠️ Network shutdown error: {e}")
 
+    def restart_network(self) -> bool:
+        """Restart the agent network"""
+        try:
+            print("🔄 Restarting Agent Network...")
+            self.shutdown_network()
+            return self.initialize_network()
+            
+        except Exception as e:
+            print(f"❌ Network restart failed: {e}")
+            return False
 
-# Test the complete network
+# Test the agent network
 if __name__ == "__main__":
-    print("🧪 Testing Complete AI Life Agent Network...")
+    print("🧪 Testing AI Life Agent Network...")
     
-    network = AILifeAgentNetwork()
+    # Create and initialize network
+    agent_network = AILifeAgentNetwork()
     
-    if network.initialize_network():
+    if agent_network.initialize_network():
         print("✅ Network initialization successful")
         
-        # Display agent capabilities
-        print("\n📋 Agent Capabilities:")
-        capabilities = network.get_agent_capabilities()
-        for agent_name, role in capabilities.items():
-            print(f"  🤖 {agent_name}: {role}")
-        
-        # Test routing
-        print("\n🧪 Testing message routing...")
-        test_message = "I feel stressed and need help managing my time"
-        response = network.route_message(test_message)
-        print(f"Routing response: {response.get('response', 'No response')[:200]}...")
-        
-        # Test direct agent communication
-        print("\n🧪 Testing direct agent communication...")
-        if 'contextagent' in network.agents:
-            context_response = network.send_direct_message(
-                "contextagent",
-                "Analyze my current environment and suggest optimizations"
-            )
-            print(f"Context agent: {context_response.get('response', 'No response')[:100]}...")
-        
-        # Test broadcast
-        print("\n🧪 Testing broadcast message...")
-        broadcast_responses = network.broadcast_message("What's the most important thing I should focus on today?")
-        print(f"Received {len(broadcast_responses)} responses from broadcast")
-        
         # Test network status
-        print("\n📊 Network Status:")
-        status = network.get_network_status()
-        print(f"Active agents: {status['network_size']}")
-        for agent_name, agent_info in status['agents'].items():
-            status_icon = "✅" if agent_info.get('active', False) else "❌"
-            print(f"  {status_icon} {agent_name}: {agent_info.get('role', 'Unknown role')[:50]}...")
+        status = agent_network.get_network_status()
+        print(f"📊 Network Status: {status.get('network_health')} with {status.get('network_size')} agents")
         
-        # Graceful shutdown
-        print("\n🔄 Testing graceful shutdown...")
-        network.shutdown_network()
+        # Test message routing
+        test_message = "I'm feeling stressed about work"
+        result = agent_network.route_message(test_message)
+        print(f"✅ Test routing: {result.get('success')} - routed to {result.get('routed_to')}")
         
-        print("\n🎉 Complete network test successful!")
+        # Show available agents
+        agents = agent_network.get_agent_list()
+        print(f"📋 Available agents: {agents}")
+        
+        print("🎉 Agent Network test complete!")
+        
     else:
         print("❌ Network initialization failed")

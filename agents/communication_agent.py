@@ -3,7 +3,7 @@ Communication Optimization Agent for AI Life Operating System
 Specialized in communication effectiveness and relationship management
 """
 
-from agents.base_agent import BaseSpecializedAgent
+from agents.base_agent import BaseAgent
 from hybrid_agent_manager import HybridAgentManager
 import sys
 import os
@@ -14,7 +14,7 @@ from typing import List, Dict, Any
 import time
 import json
 
-class CommunicationOptimizationAgent(BaseSpecializedAgent):
+class CommunicationOptimizationAgent(BaseAgent):
     """Agent specialized in communication and relationships"""
     
     def __init__(self, hybrid_manager: HybridAgentManager = None):

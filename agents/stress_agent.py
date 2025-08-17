@@ -3,7 +3,7 @@ Stress Management Agent for AI Life Operating System
 Specialized in stress detection and management techniques
 """
 
-from agents.base_agent import BaseSpecializedAgent
+from agents.base_agent import BaseAgent
 from hybrid_agent_manager import HybridAgentManager
 import sys
 import os
@@ -14,7 +14,7 @@ from typing import List, Dict, Any
 import time
 import json
 
-class StressManagementAgent(BaseSpecializedAgent):
+class StressManagementAgent(BaseAgent):
     """Agent specialized in stress detection and management"""
     
     def __init__(self, hybrid_manager: HybridAgentManager = None):
