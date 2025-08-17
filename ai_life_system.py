@@ -3,6 +3,7 @@ AI Life Operating System - Production Version
 Complete autonomous AI assistant with memory, relationships, and proactive intelligence
 """
 
+
 from hybrid_agent_manager import HybridAgentManager
 from agent_network import AILifeAgentNetwork
 from events.event_manager import EventManager
@@ -12,9 +13,12 @@ from proactive.predictive_planner import PredictiveTaskPlanner
 from proactive.autonomous_assistant import AutonomousAssistantManager
 from integration.performance_optimizer import PerformanceOptimizer
 from integration.health_monitor import SystemHealthMonitor
+from agents.emotional_analysis_agent import EmotionalAnalysisAgent
+from agents.intent_classification_agent import IntentClassificationAgent
 import time
 import threading
 from typing import Dict, Any
+
 
 class AILifeOperatingSystem:
     def __init__(self):
@@ -44,17 +48,29 @@ class AILifeOperatingSystem:
         self.performance_optimizer = PerformanceOptimizer(self)
         self.health_monitor = SystemHealthMonitor(self)
         
+        # Add specialized analysis agents
+        self.emotional_analysis_agent = EmotionalAnalysisAgent()
+        self.intent_classification_agent = IntentClassificationAgent()
+        
         self.running = False
-        print("🤖 AI Life Operating System initialized successfully")
+        print("🤖 AI Life Operating System initialized with specialized analysis agents")
+
 
     def initialize(self) -> bool:
-        """Initialize and start all AI Life OS components"""
+        """Initialize all AI Life OS components including analysis agents"""
         print("🚀 Starting AI Life Operating System...")
         
         # Initialize agent network
         if not self.agent_network.initialize_network():
             print("❌ Agent network initialization failed")
             return False
+        
+        # Initialize analysis agents
+        if not self.emotional_analysis_agent.initialize():
+            print("⚠️ Emotional Analysis Agent initialization failed")
+        
+        if not self.intent_classification_agent.initialize():
+            print("⚠️ Intent Classification Agent initialization failed")
         
         # Initialize autonomous assistant with agent network
         self.autonomous_assistant = AutonomousAssistantManager(
@@ -65,7 +81,7 @@ class AILifeOperatingSystem:
         # Start background systems
         self._start_background_systems()
         
-        print("✅ AI Life OS fully operational")
+        print("✅ AI Life OS fully operational with analysis agents")
         self.running = True
         return True
     
@@ -109,7 +125,7 @@ class AILifeOperatingSystem:
         listener_thread.start()
     
     def chat(self, message: str) -> str:
-        """Main chat interface with intelligent routing and memory"""
+        """Enhanced chat with agent-based analysis instead of hardcoded logic"""
         if not self.running:
             return "AI Life OS not initialized. Please restart the system."
         
@@ -121,9 +137,13 @@ class AILifeOperatingSystem:
         start_time = time.time()
         
         try:
-            # Analyze emotional context and importance
-            emotional_context = self._detect_emotional_context(message)
-            message_importance = self._calculate_message_importance(message, emotional_context)
+            # REPLACED: Use Emotional Analysis Agent instead of hardcoded function
+            emotional_analysis = self.emotional_analysis_agent.analyze_emotional_context(message)
+            emotional_context = emotional_analysis.get('emotions', {})
+            
+            # REPLACED: Use Intent Classification Agent for message importance
+            intent_analysis = self.intent_classification_agent.classify_intent(message, emotional_analysis)
+            message_importance = intent_analysis.get('importance', 0.5)
             
             # Update relationship network
             try:
@@ -131,127 +151,91 @@ class AILifeOperatingSystem:
                     "user", message, emotional_context
                 )
             except Exception:
-                pass  # Continue if relationship update fails
+                pass
             
-            # Store user message in memory
+            # Store user message with agent-analyzed context
             try:
                 if hasattr(self.memory_manager, 'store_enhanced_experience'):
                     self.memory_manager.store_enhanced_experience(
                         "user",
-                        {"type": "user_message", "message": message},
+                        {
+                            "type": "user_message", 
+                            "message": message,
+                            "intent_analysis": intent_analysis,
+                            "emotional_analysis": emotional_analysis
+                        },
                         emotional_context,
                         message_importance
                     )
             except Exception:
-                pass  # Continue if memory storage fails
+                pass
             
-            # Route message to appropriate agent
+            # Enhanced routing with agent analysis
             routing_result = self.agent_network.orchestrator.route_message(message)
             
-            if routing_result.get("routing_success"):
-                routed_agent = routing_result.get('routed_to')
-                
-                # Get actual response from the routed agent
-                actual_response = routing_result.get('agent_response', '')
-                
-                # If no agent response, get it directly
-                if not actual_response:
-                    agent_id = self.agent_network.agents.get(routed_agent.lower(), {}).get('id')
-                    if agent_id:
-                        direct_response = self.agent_network.hybrid_manager.send_message(
-                            agent_id, message
-                        )
-                        actual_response = direct_response.get('response', 'I apologize, but I was unable to generate a response.')
-                
-                # Store response in memory
-                try:
-                    if hasattr(self.memory_manager, 'store_enhanced_experience'):
-                        self.memory_manager.store_enhanced_experience(
-                            "user",
-                            {"type": "system_response", "message": actual_response},
-                            {"helpfulness": 0.8, "engagement": 0.7},
-                            0.6
-                        )
-                except Exception:
-                    pass
-                
-                # Cache response and update performance metrics
-                response_time = time.time() - start_time
-                self.performance_optimizer.optimize_response_caching(message, actual_response)
-                self.performance_optimizer.metrics["response_times"].append(response_time)
-                
-                return actual_response
-            
+            # Use suggested agent from intent analysis if routing fails
+            if not routing_result.get("routing_success") and intent_analysis.get('suggested_agent'):
+                suggested_agent = intent_analysis.get('suggested_agent')
+                print(f"🔄 Using suggested agent: {suggested_agent}")
+                agent_id = self.agent_network.agents.get(suggested_agent.lower(), {}).get('id')
+                if agent_id:
+                    direct_response = self.agent_network.hybrid_manager.send_message(agent_id, message)
+                    actual_response = direct_response.get('response', 'I apologize, but I was unable to generate a response.')
+                else:
+                    actual_response = "I understand your request, but I'm currently unable to process it. Please try rephrasing."
             else:
-                # Fallback routing
-                response = self.agent_network.route_message(message)
-                return response.get('response', 'I apologize, but I was unable to process your request. Please try rephrasing.')
-                
+                # Standard routing
+                if routing_result.get("routing_success"):
+                    routed_agent = routing_result.get('routed_to')
+                    actual_response = routing_result.get('agent_response', '')
+                    
+                    if not actual_response:
+                        agent_id = self.agent_network.agents.get(routed_agent.lower(), {}).get('id')
+                        if agent_id:
+                            direct_response = self.agent_network.hybrid_manager.send_message(agent_id, message)
+                            actual_response = direct_response.get('response', 'I apologize, but I was unable to generate a response.')
+                else:
+                    response = self.agent_network.route_message(message)
+                    actual_response = response.get('response', 'I apologize, but I was unable to process your request. Please try rephrasing.')
+            
+            # Store response with enhanced analysis
+            try:
+                if hasattr(self.memory_manager, 'store_enhanced_experience'):
+                    self.memory_manager.store_enhanced_experience(
+                        "user",
+                        {
+                            "type": "system_response", 
+                            "message": actual_response,
+                            "response_quality": self._assess_response_quality(actual_response, intent_analysis)
+                        },
+                        {"helpfulness": 0.8, "engagement": 0.7},
+                        0.6
+                    )
+            except Exception:
+                pass
+            
+            # Cache and track performance
+            response_time = time.time() - start_time
+            self.performance_optimizer.optimize_response_caching(message, actual_response)
+            self.performance_optimizer.metrics["response_times"].append(response_time)
+            
+            return actual_response
+            
         except Exception as e:
             return f"I encountered an error processing your request: {str(e)}. Please try again."
     
-    def _detect_emotional_context(self, message: str) -> Dict[str, float]:
-        """Detect emotional context from user message"""
-        emotions = {}
-        message_lower = message.lower()
+    def _assess_response_quality(self, response: str, intent_analysis: Dict[str, Any]) -> float:
+        """Assess response quality based on intent analysis"""
+        quality_score = 0.8  # Base quality
         
-        # Stress and anxiety indicators
-        stress_words = ['stress', 'stressed', 'overwhelmed', 'pressure', 'deadline', 'urgent', 'panic', 'worried', 'anxiety']
-        if any(word in message_lower for word in stress_words):
-            emotions['stress'] = 0.7
+        # Adjust based on response length and intent
+        if intent_analysis.get('intent') == 'question' and len(response) > 100:
+            quality_score += 0.1
         
-        # Help-seeking indicators
-        help_words = ['help', 'assist', 'support', 'guidance', 'advice', 'stuck', 'confused', 'lost']
-        if any(word in message_lower for word in help_words):
-            emotions['seeking_help'] = 0.6
-        
-        # Positive emotions
-        positive_words = ['happy', 'great', 'awesome', 'excited', 'good', 'excellent', 'wonderful', 'amazing']
-        if any(word in message_lower for word in positive_words):
-            emotions['positive'] = 0.6
-        
-        # Negative emotions
-        negative_words = ['sad', 'upset', 'angry', 'frustrated', 'disappointed', 'terrible', 'awful']
-        if any(word in message_lower for word in negative_words):
-            emotions['negative'] = 0.6
-        
-        # Urgency indicators
-        urgency_words = ['urgent', 'asap', 'quickly', 'immediately', 'now', 'emergency']
-        if any(word in message_lower for word in urgency_words):
-            emotions['urgency'] = 0.8
-        
-        # Learning/curiosity
-        learning_words = ['learn', 'understand', 'explain', 'how', 'what', 'why', 'curious']
-        if any(word in message_lower for word in learning_words):
-            emotions['curiosity'] = 0.5
-        
-        return emotions
-    
-    def _calculate_message_importance(self, message: str, emotional_context: Dict[str, float]) -> float:
-        """Calculate importance score for message"""
-        base_importance = 0.5
-        
-        # Increase for emotional content
-        if emotional_context:
-            max_emotion = max(emotional_context.values())
-            base_importance += max_emotion * 0.3
-        
-        # Increase for message length (more thought)
-        if len(message) > 100:
-            base_importance += 0.15
-        elif len(message) > 200:
-            base_importance += 0.25
-        
-        # Increase for questions
-        if '?' in message:
-            base_importance += 0.1
-        
-        # Increase for urgent content
-        urgent_words = ['urgent', 'help', 'important', 'critical', 'emergency']
-        if any(word in message.lower() for word in urgent_words):
-            base_importance += 0.2
-        
-        return min(base_importance, 1.0)
+        if intent_analysis.get('priority') == 'urgent' and len(response) > 150:
+            quality_score += 0.1
+            
+        return min(1.0, quality_score)
     
     def get_system_status(self) -> Dict[str, Any]:
         """Get comprehensive system status"""
@@ -374,6 +358,7 @@ class AILifeOperatingSystem:
             pass
         print("🛑 AI Life OS stopped")
 
+
 def main():
     """Main function to start AI Life Operating System"""
     print("🚀 Initializing AI Life Operating System...")
@@ -395,6 +380,7 @@ def main():
         print(f"❌ System error: {e}")
     finally:
         ai_system.stop()
+
 
 if __name__ == "__main__":
     main()
